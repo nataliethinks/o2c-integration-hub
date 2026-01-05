@@ -1,0 +1,92 @@
+version: "3.8"
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: o2c-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  db:
+    image: postgres:16
+    container_name: o2c-postgres
+    environment:
+      POSTGRES_USER: o2c
+      POSTGRES_PASSWORD: o2c
+      POSTGRES_DB: o2c_reporting
+    ports:
+      - "5432:5432"
+
+  o2c-api:
+    build: ./services/o2c-api
+    container_name: o2c-api
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      QUEUE_NAME: o2c.events
+      JWT_SECRET: change-me-super-secret
+    ports:
+      - "5000:5000"
+    depends_on:
+      - rabbitmq
+
+  o2c-worker:
+    build: ./services/o2c-worker
+    container_name: o2c-worker
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      QUEUE_NAME: o2c.events
+      PGHOST: db
+      PGPORT: 5432
+      PGUSER: o2c
+      PGPASSWORD: o2c
+      PGDATABASE: o2c_reporting
+    depends_on:
+      - rabbitmq
+      - db
+  prometheus:
+    image: prom/prometheus
+    container_name: o2c-prometheus
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    depends_on:
+      - o2c-api
+
+  grafana:
+    image: grafana/grafana
+    container_name: o2c-grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
+    container_name: o2c-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.12.0
+    container_name: o2c-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.12.0
+    container_name: o2c-filebeat
+    user: root
+    volumes:
+      - ./observability/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      - elasticsearch

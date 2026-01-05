@@ -1,0 +1,11 @@
+filebeat.inputs:
+  - type: filestream
+    id: docker-containers
+    paths:
+      - /var/lib/docker/containers/*/*.log
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+
+setup.template.enabled: true
+setup.ilm.enabled: false
